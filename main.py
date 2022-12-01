@@ -7,6 +7,8 @@ import difflib
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import metrics
 
+from FNNmodel import model2
+
 numbers_dict = {'0': "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six",
                 "7": "seven", "8": "eight", "9": "nine", "10": "ten", "11": "eleven", "12": "twelve", "13": "thirteen",
                 "14": "fourteen", "15": "fifteen", "16": "sixteen", "17": "seventeen", "18": "eighteen",
@@ -84,11 +86,11 @@ def embedding_data(glove, list_of_sentences_with_tags, mean_vec):
             if word not in glove.key_to_index:
                 # if tag:
                 # print(f"{word} // {tag} not an existing word in the model")
-                similar_vecs = get_similar_vecs(word, sentence, vocabulary)
-                if len(similar_vecs):
-                    vec = np.mean(similar_vecs, axis=0)
-                else:
-                    vec = mean_vec
+                # similar_vecs = get_similar_vecs(word, sentence, vocabulary)
+                # if len(similar_vecs):
+                #     vec = np.mean(similar_vecs, axis=0)
+                # else:
+                vec = mean_vec
                 # vec = model.wv[word]
             else:
                 vec = glove[word]
@@ -108,9 +110,7 @@ def model1(representation, labels, representation_val, labels_val):
     F1_Score = metrics.f1_score(labels_val, prediction)
     print(f"F1 score for model1 (KNN) = {F1_Score}")
 
-
-
-if __name__ == '__main__':
+def create_data(x_file_name, y_file_name):
     # represent data with glove
     glove_path = 'glove-twitter-200'
     glove = downloader.load(glove_path)
@@ -120,14 +120,20 @@ if __name__ == '__main__':
     list_of_sentences, list_of_sentences_with_tags, list_of_words = preprocess("train.tagged", True)
     mean_vec_train = get_mean_vec(glove, list_of_words)
     representation, labels = embedding_data(glove, list_of_sentences_with_tags, mean_vec_train)
-    # np.save("representation_train", np.array(representation))
-    # np.save("labels_train", np.array(labels))
+    np.save(f"{x_file_name}_train", np.array(representation))
+    np.save(f"{y_file_name}_train", np.array(labels))
 
     # preprocess dev data
     list_of_sentences_val, list_of_sentences_with_tags_val, list_of_words_val = preprocess("dev.tagged", True)
     mean_vec_val = get_mean_vec(glove, list_of_words_val)
     representation_val, labels_val = embedding_data(glove, list_of_sentences_with_tags_val, mean_vec_val)
-    # np.save("representation_val", np.array(representation_val))
-    # np.save("labels_val", np.array(labels_val))
-    model1(representation, labels, representation_val, labels_val)
+    np.save(f"{x_file_name}_val", np.array(representation_val))
+    np.save(f"{y_file_name}_val", np.array(labels_val))
+
+    return representation, labels, representation_val, labels_val
+
+if __name__ == '__main__':
+    # representation, labels, representation_val, labels_val = create_data("x_mean", "y_mean")
+    # model1(representation, labels, representation_val, labels_val)
+    model2()
 

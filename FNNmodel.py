@@ -7,39 +7,40 @@ from sklearn import metrics
 from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
+from torch import nn
 
 GLOVE_PATH = 'glove-twitter-200'
-from torch import nn
 
 
 class FNNDataSet(Dataset):
 
-    def __init__(self, file_path):
-        self.file_path = file_path
-        data = pd.read_csv(self.file_path)
-        self.sentences = data['reviewText'].tolist()
-        self.labels = data['label'].tolist()
-        self.tags_to_idx = {tag: idx for idx, tag in enumerate(sorted(list(set(self.labels))))}
-        self.idx_to_tag = {idx: tag for tag, idx in self.tags_to_idx.items()}
-        self.X = np.load("representation_train.npy")
-        self.y = np.load("representation_train.npy")
-        self.labels = self.y
-        representation = np.stack(self.X)
-        self.tokenized_sen = representation
+    def __init__(self, x_file_path, y_file_path):
+        self.x_file_path = x_file_path
+        self.y_file_path = y_file_path
+        representation = np.load(self.x_file_path)
+        labels = np.load(self.y_file_path)
+        # self.sentences = data['reviewText'].tolist()
+        # self.labels = data['label'].tolist()
+        # self.tags_to_idx = {tag: idx for idx, tag in enumerate(sorted(list(set(self.labels))))}
+        # self.idx_to_tag = {idx: tag for tag, idx in self.tags_to_idx.items()}
+        self.X = representation
+        self.y = labels
+        # self.labels = self.y
+        # representation = np.stack(self.X)
+        # self.tokenized_sen = representation
         self.vector_dim = representation.shape[-1]
 
     def __getitem__(self, item):
         return self.X[item], self.y[item]
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.y)
 
 
 class FNN(nn.Module):
 
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(FNN, self).__init__()
-        # Linear function
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.activation = nn.Sigmoid()
         self.fc2 = nn.Linear(hidden_dim, output_dim)
@@ -99,7 +100,7 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
             print(f'{phase.title()} Loss: {epoch_loss:.4e} F1 score: {epoch_F1_Score}')
 
             if phase == 'test' and epoch_F1_Score > best_f1:
-                best_acc = epoch_F1_Score
+                best_f1 = epoch_F1_Score
                 with open('model.pkl', 'wb') as f:
                     torch.save(model, f)
         print()
@@ -108,12 +109,17 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
 
 
 def model2():
-    train_ds = FNNDataSet('train.npy')
+    # create train dataset
+    train_ds = FNNDataSet('representation_mean_train.npy', "labels_mean_train.npy")
     print('created train')
-    val_ds = FNNDataSet('dev.npy')
+
+    # create val dataset
+    val_ds = FNNDataSet('representation_mean_val.npy', 'labels_mean_val.npy')
     print('created val')
+
     datasets = {"train": train_ds, "test": val_ds}
-    # TODO: change this
-    fnn_model = FNN()
-    optimizer = Adam(params=nn_model.parameters())
-    train(model=fnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=5)
+    hp = dict(num_epochs=30, hidden_dim=100, batch_size=16, learn_rate=0.01)
+    num_classes = 2
+    fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'])
+    optimizer = Adam(params=fnn_model.parameters())
+    train(model=fnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'])
