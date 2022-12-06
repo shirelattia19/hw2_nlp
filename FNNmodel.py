@@ -1,13 +1,14 @@
-import re
+import warnings
+warnings.filterwarnings('ignore')
+from statistics import mean
 
 import numpy as np
 import torch
-from gensim import downloader
 from sklearn import metrics
 from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
-import pandas as pd
 from torch import nn
+
 
 GLOVE_PATH = 'glove-twitter-200'
 
@@ -52,8 +53,9 @@ class FNN(nn.Module):
         out = self.fc2(out)
         if labels is None:
             return out, None
-        loss = self.loss(x, labels)
-        return out, loss
+        loss = self.loss(out, labels.long())
+        pred = out.argmax(dim=-1).clone().detach().cpu()
+        return pred, loss
 
 
 def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
@@ -62,6 +64,10 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
                     "test": DataLoader(data_sets["test"], batch_size=batch_size, shuffle=False)}
     model.to(device)
     best_f1 = 0.0
+    loss_history_train_epoch = []
+    loss_history_valid_epoch = []
+    f1_train_epoch = []
+    f1_valid_epoch = []
 
     for epoch in range(num_epochs):
         print(f'Epoch {epoch + 1}/{num_epochs}')
@@ -73,36 +79,34 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
             else:
                 model.eval()
 
-            running_loss = 0.0
-            labels, preds = [], []
-
             for batch in data_loaders[phase]:
-                batch_size = 0
-                for k, v in batch.items():
-                    batch[k] = v.to(device)
-                    batch_size = v.shape[0]
 
                 optimizer.zero_grad()
                 if phase == 'train':
-                    outputs, loss = model(**batch)
+                    pred, loss = model(batch[0], batch[1])
                     loss.backward()
                     optimizer.step()
+                    loss_history_train_epoch.append(loss)
+                    f1_train_epoch.append(metrics.f1_score(batch[1], pred))
                 else:
                     with torch.no_grad():
-                        outputs, loss = model(**batch)
-                pred = outputs.argmax(dim=-1).clone().detach().cpu()
-                labels += batch['labels'].cpu().view(-1).tolist()
-                preds += pred.view(-1).tolist()
-                running_loss += loss.item() * batch_size
+                        pred, loss = model(batch[0], batch[1])
+                        loss_history_valid_epoch.append(loss)
+                        f1_valid_epoch.append(metrics.f1_score(batch[1], pred))
 
-            epoch_loss = running_loss / len(data_sets[phase])
-            epoch_F1_Score = metrics.f1_score(labels, preds)
-            print(f'{phase.title()} Loss: {epoch_loss:.4e} F1 score: {epoch_F1_Score}')
+            if phase == 'train':
+                epoch_loss_train = torch.mean(torch.stack(loss_history_train_epoch))
+                epoch_F1_Score_train = mean(f1_train_epoch)
+                print(f'{phase.title()} Train Loss: {epoch_loss_train:.4e} Train F1 score: {epoch_F1_Score_train}')
+            else:
+                epoch_loss_valid = torch.mean(torch.stack(loss_history_valid_epoch))
+                epoch_F1_Score_valid = mean(f1_valid_epoch)
+                print(f'{phase.title()} Train Loss: {epoch_loss_valid:.4e} Train F1 score: {epoch_F1_Score_valid}')
 
-            if phase == 'test' and epoch_F1_Score > best_f1:
-                best_f1 = epoch_F1_Score
-                with open('model.pkl', 'wb') as f:
-                    torch.save(model, f)
+                if epoch_F1_Score_valid > best_f1:
+                    best_f1 = epoch_F1_Score_valid
+                    with open('model.pkl', 'wb') as f:
+                        torch.save(model, f)
         print()
 
     print(f'Best Validation F1 score: {best_f1:4f}')
