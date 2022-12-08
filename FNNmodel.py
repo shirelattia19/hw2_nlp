@@ -1,14 +1,14 @@
 import warnings
+
 warnings.filterwarnings('ignore')
 from statistics import mean
 
 import numpy as np
 import torch
 from sklearn import metrics
-from torch.optim import Adam
+from torch.optim import Adam, SGD
 from torch.utils.data import Dataset, DataLoader
 from torch import nn
-
 
 GLOVE_PATH = 'glove-twitter-200'
 
@@ -43,16 +43,18 @@ class FNN(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(FNN, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.activation = nn.Sigmoid()
+        self.activation = nn.LeakyReLU()
         self.fc2 = nn.Linear(hidden_dim, output_dim)
         self.loss = nn.CrossEntropyLoss()
 
     def forward(self, x, labels=None):
+        x = x.float()
         out = self.fc1(x)
         out = self.activation(out)
         out = self.fc2(out)
         if labels is None:
             return out, None
+        # y_hat = torch.transpose(out, 1, 2)  # .to(self.device)
         loss = self.loss(out, labels.long())
         pred = out.argmax(dim=-1).clone().detach().cpu()
         return pred, loss
@@ -87,12 +89,22 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
                     loss.backward()
                     optimizer.step()
                     loss_history_train_epoch.append(loss)
+                    f1_list = []
                     f1_train_epoch.append(metrics.f1_score(batch[1], pred))
+                    # for l, p in zip(batch[1], pred):
+                    #     f1 = metrics.f1_score(l, p)
+                    #     f1_list.append(f1)
+                    # f1_train_epoch.append(mean(f1_list))
                 else:
                     with torch.no_grad():
                         pred, loss = model(batch[0], batch[1])
                         loss_history_valid_epoch.append(loss)
                         f1_valid_epoch.append(metrics.f1_score(batch[1], pred))
+                        # f1_list = []
+                        # for l, p in zip(batch[1], pred):
+                        #     f1 = metrics.f1_score(l, p)
+                        #     f1_list.append(f1)
+                        # f1_valid_epoch.append(mean(f1_list))
 
             if phase == 'train':
                 epoch_loss_train = torch.mean(torch.stack(loss_history_train_epoch))
@@ -112,18 +124,18 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
     print(f'Best Validation F1 score: {best_f1:4f}')
 
 
-def model2():
+def model2(data_name):
     # create train dataset
-    train_ds = FNNDataSet('representation_mean_train.npy', "labels_mean_train.npy")
+    train_ds = FNNDataSet(f'x_{data_name}_train.npy', f"y_{data_name}_train.npy")
     print('created train')
 
     # create val dataset
-    val_ds = FNNDataSet('representation_mean_val.npy', 'labels_mean_val.npy')
+    val_ds = FNNDataSet(f'x_{data_name}_val.npy', f'y_{data_name}_val.npy')
     print('created val')
 
     datasets = {"train": train_ds, "test": val_ds}
-    hp = dict(num_epochs=30, hidden_dim=100, batch_size=16, learn_rate=0.01)
+    hp = dict(num_epochs=100, hidden_dim=100, batch_size=300, lr=0.01)
     num_classes = 2
     fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'])
-    optimizer = Adam(params=fnn_model.parameters())
+    optimizer = SGD(params=fnn_model.parameters(), lr=hp['lr'])
     train(model=fnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'])
