@@ -8,7 +8,7 @@ import torch
 from sklearn import metrics
 from torch.optim import Adam, SGD
 from torch.utils.data import Dataset, DataLoader
-from torch import nn
+from torch import nn, Tensor
 
 GLOVE_PATH = 'glove-twitter-200'
 
@@ -40,18 +40,23 @@ class FNNDataSet(Dataset):
 
 class FNN(nn.Module):
 
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, weights):
         super(FNN, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.activation = nn.LeakyReLU()
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
-        self.loss = nn.CrossEntropyLoss()
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, output_dim)
+        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dim)
+        self.loss = nn.CrossEntropyLoss(weight=Tensor(weights))
 
     def forward(self, x, labels=None):
         x = x.float()
-        out = self.fc1(x)
-        out = self.activation(out)
-        out = self.fc2(out)
+        # out = self.fc1(x)
+        # out = self.activation(out)
+        # out = self.fc2(out)
+        # out = self.activation(out)
+        # out = self.fc3(out)
+        out = self.lstm(x)
         if labels is None:
             return out, None
         # y_hat = torch.transpose(out, 1, 2)  # .to(self.device)
@@ -127,6 +132,8 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
 def model2(data_name):
     # create train dataset
     train_ds = FNNDataSet(f'x_{data_name}_train.npy', f"y_{data_name}_train.npy")
+    nums_0, nums_1 = np.unique(train_ds.y, return_counts=True)[1]
+    weights = Tensor([nums_1, nums_0])
     print('created train')
 
     # create val dataset
@@ -134,8 +141,8 @@ def model2(data_name):
     print('created val')
 
     datasets = {"train": train_ds, "test": val_ds}
-    hp = dict(num_epochs=100, hidden_dim=100, batch_size=300, lr=0.01)
+    hp = dict(num_epochs=100, hidden_dim=100, batch_size=16, lr=1e-3)
     num_classes = 2
-    fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'])
-    optimizer = SGD(params=fnn_model.parameters(), lr=hp['lr'])
+    fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'], weights=weights)
+    optimizer = Adam(params=fnn_model.parameters(), lr=hp['lr'])
     train(model=fnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'])
