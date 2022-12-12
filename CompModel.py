@@ -1,5 +1,7 @@
 import warnings
 
+from FNNmodel import FNNDataSet
+
 warnings.filterwarnings('ignore')
 from statistics import mean
 
@@ -9,62 +11,43 @@ from sklearn import metrics
 from torch.optim import Adam, SGD
 from torch.utils.data import Dataset, DataLoader
 from torch import nn, Tensor
-from torch.autograd import Variable
 
 GLOVE_PATH = 'glove-twitter-200'
 
 
-class FNNDataSet(Dataset):
-
-    def __init__(self, x_file_path, y_file_path):
-        self.x_file_path = x_file_path
-        self.y_file_path = y_file_path
-        representation = np.load(self.x_file_path)
-        labels = np.load(self.y_file_path)
-        # self.sentences = data['reviewText'].tolist()
-        # self.labels = data['label'].tolist()
-        # self.tags_to_idx = {tag: idx for idx, tag in enumerate(sorted(list(set(self.labels))))}
-        # self.idx_to_tag = {idx: tag for tag, idx in self.tags_to_idx.items()}
-        self.X = representation
-        self.y = labels
-        # self.labels = self.y
-        # representation = np.stack(self.X)
-        # self.tokenized_sen = representation
-        self.vector_dim = representation.shape[-1]
-
-    def __getitem__(self, item):
-        return self.X[item], self.y[item]
-
-    def __len__(self):
-        return len(self.y)
-
-
-class FNN(nn.Module):
-
-    def __init__(self, input_dim, hidden_dim, output_dim, weights):
-        super(FNN, self).__init__()
+class LSTM1(nn.Module):
+    def __init__(self, num_classes, input_dim, hidden_dim, num_layers, weights, is_lstm=True, drop_prob=0.5):
+        super(LSTM1, self).__init__()
+        self.num_classes = num_classes
+        self.num_layers = num_layers
+        self.input_dim = input_dim
         self.hidden_dim = hidden_dim
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.rnn = nn.RNN(input_size=input_dim,
+                          hidden_size=hidden_dim,
+                          batch_first=True)
+        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dim,
+                            num_layers=num_layers, batch_first=True, bidirectional=True)
+        self.dropout = nn.Dropout(drop_prob)
+        self.fc = nn.Linear(2 * hidden_dim, num_classes)
         self.activation = nn.LeakyReLU()
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, output_dim)
         self.loss = nn.CrossEntropyLoss(weight=Tensor(weights))
+        self.is_lstm = is_lstm
 
-    def forward(self, x, labels=None):
+    def forward(self, x, labels):
         x = x.float()
-        out = self.fc1(x)
-        out = self.activation(out)
-        # out = self.fc2(out)
-        # out = self.activation(out)
-        out = self.fc3(out)
-        if labels is None:
-            return out, None
-        # y_hat = torch.transpose(out, 1, 2)  # .to(self.device)
-        loss = self.loss(out, labels.long())
+        x = self.dropout(x)
+        if not self.is_lstm:
+            h0 = torch.zeros(1, self.hidden_dim)
+            out, _ = self.rnn(x, h0)
+            out = self.fc(out)
+            y_hat = out
+        else:
+            out, _ = self.lstm(x)
+            out = self.fc(out)
+            y_hat = torch.transpose(out, 1, 2)  # .to(self.device)
+        loss = self.loss(y_hat, labels.long())
         pred = out.argmax(dim=-1).clone().detach().cpu()
         return pred, loss
-
-
 
 
 def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
@@ -97,14 +80,21 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
                     optimizer.step()
                     loss_history_train_epoch.append(loss)
 
-                    f1_train_epoch.append(metrics.f1_score(batch[1], pred))
-
+                    f1_list = []
+                    for l, p in zip(batch[1], pred):
+                        f1 = metrics.f1_score(l, p)
+                        f1_list.append(f1)
+                    f1_train_epoch.append(mean(f1_list))
                 else:
                     with torch.no_grad():
                         pred, loss = model(batch[0], batch[1])
                         loss_history_valid_epoch.append(loss)
-                        f1_valid_epoch.append(metrics.f1_score(batch[1], pred))
-                        #acc_valid_epoch.append((batch[1] == pred).float().sum()/(pred.shape[0]*pred.shape[1]))
+                        f1_list = []
+                        for l, p in zip(batch[1], pred):
+                            f1 = metrics.f1_score(l, p)
+                            f1_list.append(f1)
+                        f1_valid_epoch.append(mean(f1_list))
+                        acc_valid_epoch.append((batch[1] == pred).float().sum()/(pred.shape[0]*pred.shape[1]))
 
             if phase == 'train':
                 epoch_loss_train = torch.mean(torch.stack(loss_history_train_epoch))
@@ -113,9 +103,9 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
             else:
                 epoch_loss_valid = torch.mean(torch.stack(loss_history_valid_epoch))
                 epoch_F1_Score_valid = mean(f1_valid_epoch)
-                #epoch_acc_valid = torch.mean(torch.stack(acc_valid_epoch))
-                print(f'{phase.title()} Valid Loss: {epoch_loss_valid:.4e} Valid F1 score: {epoch_F1_Score_valid} ')
-                      #f'Valid acc: {epoch_acc_valid}')
+                epoch_acc_valid = torch.mean(torch.stack(acc_valid_epoch))
+                print(f'{phase.title()} Valid Loss: {epoch_loss_valid:.4e} Valid F1 score: {epoch_F1_Score_valid} '
+                      f'Valid acc: {epoch_acc_valid}')
 
                 if epoch_F1_Score_valid > best_f1:
                     best_f1 = epoch_F1_Score_valid
@@ -126,8 +116,7 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
     print(f'Best Validation F1 score: {best_f1:4f}')
     return best_f1
 
-
-def model2(data_name):
+def model3(data_name):
     # create train dataset
     train_ds = FNNDataSet(f'x_{data_name}_train.npy', f"y_{data_name}_train.npy")
     nums_0, nums_1 = np.unique(train_ds.y, return_counts=True)[1]
@@ -141,19 +130,9 @@ def model2(data_name):
     datasets = {"train": train_ds, "test": val_ds}
     num_classes = 2
 
-    # learning_rates = [0.0001, 0.001, 0.007, 0.01, 0.04, 0.1]
-    # hidden_dims = [20, 50, 100, 150, 200, 300, 400, 600]
-    # batch_sizes = [64, 128, 200, 256, 512]
-    # results = {}
-    # for learning_rate in learning_rates:
-    #     for hidden_dim in hidden_dims:
-    #         for batch_size in batch_sizes:
-    hp = dict(num_epochs=140, hidden_dim=100, batch_size=200, lr=0.04)
-    fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'], weights=weights)
-    optimizer = Adam(params=fnn_model.parameters(), lr=hp['lr'])
-    bestf1 = train(model=fnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'],
+    hp = dict(num_epochs=140, hidden_dim=100, batch_size=400, lr=0.01)
+    lstm = LSTM1(num_classes, hidden_dim=hp['hidden_dim'], input_dim=train_ds.vector_dim, num_layers=1,
+                 weights=weights)
+    optimizer = Adam(params=lstm.parameters(), lr=hp['lr'])
+    bestf1 = train(model=lstm, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'],
                    batch_size=hp['batch_size'])
-    # results[f"hidden_dim={hidden_dim}, batch_size={batch_size}, lr={learning_rate}"] =  bestf1
-    # print(results)
-
-

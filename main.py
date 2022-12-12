@@ -127,7 +127,8 @@ def embedding_data(glove, list_of_sentences_with_tags, mean_vec):
                 # else:
                 # vec = model.wv[word]
                 # vec = mean_vec
-                vec = [0]*200
+                #vec = [0]*200
+                continue
             else:
                 vec = glove[word]
             labels.append(tag)
@@ -205,7 +206,7 @@ def create_data(file_name):
 
 
 if __name__ == '__main__':
-    #representation, labels, representation_val, labels_val = create_data("0")
+    # representation, labels, representation_val, labels_val = create_data("only_known")
     #model1(representation, labels, representation_val, labels_val)
-    model2("0")
-    print("shirel")
+    model2("similar")
+    #model3("0_padded")
