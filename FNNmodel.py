@@ -17,27 +17,29 @@ GLOVE_PATH = 'glove-twitter-200'
 
 class FNNDataSet(Dataset):
 
-    def __init__(self, x_file_path, y_file_path):
+    def __init__(self, x_file_path, y_file_path=None, is_path=True):
         self.x_file_path = x_file_path
         self.y_file_path = y_file_path
-        representation = np.load(self.x_file_path)
-        labels = np.load(self.y_file_path)
-        # self.sentences = data['reviewText'].tolist()
-        # self.labels = data['label'].tolist()
-        # self.tags_to_idx = {tag: idx for idx, tag in enumerate(sorted(list(set(self.labels))))}
-        # self.idx_to_tag = {idx: tag for tag, idx in self.tags_to_idx.items()}
+        if is_path:
+            representation = np.load(self.x_file_path)
+        else:
+            representation = x_file_path
+        if y_file_path:
+            labels = np.load(self.y_file_path)
+        else:
+            labels = None
         self.X = representation
         self.y = labels
-        # self.labels = self.y
-        # representation = np.stack(self.X)
-        # self.tokenized_sen = representation
         self.vector_dim = representation.shape[-1]
 
     def __getitem__(self, item):
-        return self.X[item], self.y[item]
+        if self.y:
+            return self.X[item], self.y[item]
+        else:
+            return self.X[item]
 
     def __len__(self):
-        return len(self.y)
+        return len(self.X.shape[0])
 
 
 class FNN(nn.Module):
@@ -58,6 +60,7 @@ class FNN(nn.Module):
         # out = self.fc2(out)
         # out = self.activation(out)
         out = self.fc3(out)
+        out = self.activation(out)
         if labels is None:
             return out, None
         # y_hat = torch.transpose(out, 1, 2)  # .to(self.device)
@@ -76,6 +79,8 @@ class RNN(nn.Module):
         self.rnn = nn.RNN(input_size=input_dim,
                           hidden_size=hidden_dim,
                           batch_first=True)
+        self.lstm = self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dim,
+                            num_layers=num_layers, batch_first=True)
         self.dropout = nn.Dropout(drop_prob)
         self.fc = nn.Linear(hidden_dim, num_classes)
         self.activation = nn.LeakyReLU()
@@ -85,7 +90,8 @@ class RNN(nn.Module):
         x = x.float()
         x = self.dropout(x)
         h0 = torch.zeros(1, self.hidden_dim)
-        out, _ = self.rnn(x, h0)
+        #out, _ = self.rnn(x,h0)
+        out, _ = self.lstm(x, (h0,h0))
         out = self.fc(out)
         loss = self.loss(out, labels.long())
         pred = out.argmax(dim=-1).clone().detach().cpu()
@@ -172,14 +178,13 @@ def model2(data_name):
     # for learning_rate in learning_rates:
     #     for hidden_dim in hidden_dims:
     #         for batch_size in batch_sizes:
-    hp = dict(num_epochs=140, hidden_dim=100, batch_size=200, lr=0.04)
-    # fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'], weights=weights)
-    rnn_model = RNN(num_classes=num_classes, input_dim=train_ds.vector_dim, hidden_dim=hp['hidden_dim'], num_layers=1,
-        weights=weights, drop_prob=0.1)
-    optimizer = Adam(params=rnn_model.parameters(), lr=hp['lr'])
-    bestf1 = train(model=rnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'],
+    hp = dict(num_epochs=100, hidden_dim=100, batch_size=300, lr=0.04)
+    fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'], weights=weights)
+    #rnn_model = RNN(num_classes=num_classes, input_dim=train_ds.vector_dim, hidden_dim=hp['hidden_dim'], num_layers=1,
+    #    weights=weights, drop_prob=0.1)
+    optimizer = Adam(params=fnn_model.parameters(), lr=hp['lr'])
+    bestf1 = train(model=fnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'],
                    batch_size=hp['batch_size'])
     # results[f"hidden_dim={hidden_dim}, batch_size={batch_size}, lr={learning_rate}"] =  bestf1
     # print(results)
-
 

@@ -14,12 +14,12 @@ from sklearn import metrics
 
 from FNNmodel import model2
 
-numbers_dict = {'0': "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six",
-                "7": "seven", "8": "eight", "9": "nine", "10": "ten", "11": "eleven", "12": "twelve", "13": "thirteen",
-                "14": "fourteen", "15": "fifteen", "16": "sixteen", "17": "seventeen", "18": "eighteen",
-                "19": "nineteen", "20": "twenty", "30": "thirty", "40": "forty", "50": "fifty", "60": "sixty",
-                "70": "seventy", "80": "eighty", "90": "ninety", "100": "hundred", "1000": "thousand",
-                "1000000": "million"}
+numbers_dict = {'0': "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": "five",
+                "6": "six", "7": "seven", "8": "eight", "9": "nine", "10": "ten", "11": "eleven",
+                "12": "twelve", "13": "thirteen", "14": "fourteen", "15": "fifteen", "16": "sixteen",
+                "17": "seventeen", "18": "eighteen", "19": "nineteen", "20": "twenty", "30": "thirty",
+                "40": "forty", "50": "fifty", "60": "sixty", "70": "seventy", "80": "eighty",
+                "90": "ninety", "100": "hundred", "1000": "thousand", "1000000": "million"}
 
 
 def get_mean_vec(glove, list_of_words):
@@ -31,18 +31,6 @@ def get_mean_vec(glove, list_of_words):
     vec_mean = np.mean(np.array(present_vecs), axis=0)
     return vec_mean
 
-
-def get_similar_vecs(word, sentence, vocabulary):
-    results = difflib.get_close_matches(word, vocabulary, n=7)
-    # similarity_score, similar_words = [], []
-    # for sen in sentence:
-    #     try:
-    #         similarity_score = [glove.similarity(r, sen[0]) for r in results]
-    #         similar_words.append(results[similarity_score.index(max(similarity_score))])
-    #     except:
-    #         pass
-    similar_vecs = np.array([glove[similar_word] for similar_word in results])
-    return similar_vecs
 
 
 def preprocess(data_path, tagged):
@@ -271,7 +259,13 @@ def embedding_data_test(glove, list_of_sentences_with_tags):
             representation.append(vec)
     return representation, labels
 
-def model1(representation, labels, representation_val, labels_val):
+def model1(file_name):
+    # get data
+    representation = np.load(f"x_{file_name}_train.npy")
+    labels = np.load(f"y_{file_name}_train.npy")
+    representation_val = np.load(f"x_{file_name}_val.npy")
+    labels_val = np.load(f"y_{file_name}_val.npy")
+
     # create KNN model
     KNN_classifier = KNeighborsClassifier(n_neighbors=5)
     KNN = KNN_classifier.fit(representation, labels)
@@ -311,6 +305,6 @@ def create_data(file_name):
 
 if __name__ == '__main__':
     # representation, labels, representation_val, labels_val = create_data("featured")
-    # model1(representation, labels, representation_val, labels_val)
+    # model1("mean")
     model2("featured")
-    #model3("0_padded")
+    # model3("0_padded")
