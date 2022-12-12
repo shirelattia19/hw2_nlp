@@ -1,6 +1,7 @@
 import os.path
 from statistics import mean
 
+import torch
 from gensim import downloader
 import numpy as np
 import re
@@ -62,11 +63,10 @@ def preprocess(data_path, tagged):
                 word, tag = line.split('\t')
             except:
                 break
-            word = word.strip().lower()
+            word = word.strip()
             if word in numbers_dict:
                 word = numbers_dict[word]
             tag = 0 if tag == 'O' else 1
-            # word = re.sub(r'\W+', '', word)
             list_of_words.append((word, tag))
             if len(list_of_sentences_with_tags) <= sentence_index:
                 list_of_sentences_with_tags.append([(word, tag)])
@@ -165,7 +165,111 @@ def embedding_data(glove, list_of_sentences_with_tags, mean_vec):
 #             labels.append(0)
 #
 #     return representation, labels
+def embedding_data_train(glove, list_of_sentences_with_tags):
+    #vocabulary = list(glove.key_to_index.keys())
+    representation = []
+    labels = []
+    mean_1 = []
+    mean_0 = []
+    for k, sentence in tqdm(enumerate(list_of_sentences_with_tags), total=len(list_of_sentences_with_tags)):
+        for word, tag in sentence:
+            if word in glove.key_to_index:
+                if tag == 0:
+                    mean_0.append(glove[word])
+                else:
+                    mean_1.append(glove[word])
 
+    mean_0_1 = [sum(sub_list) / len(sub_list) for sub_list in zip(*mean_0)]
+    mean_1_1 = [sum(sub_list) / len(sub_list) for sub_list in zip(*mean_1)]
+
+    for k, sentence in tqdm(enumerate(list_of_sentences_with_tags), total=len(list_of_sentences_with_tags)):
+        for word, tag in sentence:
+            features = add_features(word)
+            word = word.lower()
+            word = re.sub(r'\W+', '', word)
+            if word not in glove.key_to_index:
+                if tag == 0:
+                    vec = mean_0_1
+                else:
+                    vec = mean_1_1
+            else:
+                vec = glove[word]
+            vec = np.concatenate((vec, np.array(features)), axis=0)
+            labels.append(tag)
+            representation.append(vec)
+    return representation, labels
+
+def is_ascii(s):
+    return all(ord(c) < 128 for c in s)
+
+def add_features(word):
+    features = []
+    if word[0].isupper():
+        features.append(1)
+    else:
+        features.append(0)
+    if is_ascii(word):
+        features.append(1)
+    else:
+        features.append(0)
+    if word.startswith('@'):
+        features.append(1)
+    else:
+        features.append(0)
+    if any(l.isdigit() for l in word):
+        features.append(1)
+    else:
+        features.append(0)
+    if all(l.isupper() for l in word):
+        features.append(1)
+    else:
+        features.append(0)
+    if word.startswith('http'):
+        features.append(1)
+    else:
+        features.append(0)
+    return features
+
+def ressemble_a(glo,word,glove):
+    mot_similar_word = ""
+    for key in glo:
+        counter = 0
+        max_counter =0
+        for i in word:
+            if i in key:
+                counter+=1
+        if counter > max_counter and counter>5:
+            mot_similar_word = key
+            max_counter = counter
+    if mot_similar_word in glove.key_to_index:
+        return glove[mot_similar_word]
+    else:
+        return [0] * 200
+
+
+
+def embedding_data_test(glove, list_of_sentences_with_tags):
+    #vocabulary = list(glove.key_to_index.keys())
+    representation = []
+    labels = []
+    glo = []
+    for k, sentence in tqdm(enumerate(list_of_sentences_with_tags), total=len(list_of_sentences_with_tags)):
+        for word, tag in sentence:
+            if word in glove.key_to_index:
+                glo.append(word)
+    for k, sentence in tqdm(enumerate(list_of_sentences_with_tags), total=len(list_of_sentences_with_tags)):
+        for word, tag in sentence:
+            features = add_features(word)
+            word = word.lower()
+            word = re.sub(r'\W+', '', word)
+            if word not in glove.key_to_index:
+                vec = ressemble_a(glo,word,glove)
+            else:
+                vec = glove[word]
+            vec = np.concatenate((vec, np.array(features)), axis=0)
+            labels.append(tag)
+            representation.append(vec)
+    return representation, labels
 
 def model1(representation, labels, representation_val, labels_val):
     # create KNN model
@@ -191,14 +295,14 @@ def create_data(file_name):
     # preprocess train data
     list_of_sentences, list_of_sentences_with_tags, list_of_words = preprocess("train.tagged", True)
     mean_vec_train = get_mean_vec(glove, list_of_words)
-    representation, labels = embedding_data(glove, list_of_sentences_with_tags, mean_vec_train)
+    representation, labels = embedding_data_train(glove, list_of_sentences_with_tags)
     np.save(f"x_{file_name}_train", np.array(representation))
     np.save(f"y_{file_name}_train", np.array(labels))
 
     # preprocess dev data
     list_of_sentences_val, list_of_sentences_with_tags_val, list_of_words_val = preprocess("dev.tagged", True)
     mean_vec_val = get_mean_vec(glove, list_of_words_val)
-    representation_val, labels_val = embedding_data(glove, list_of_sentences_with_tags_val, mean_vec_val)
+    representation_val, labels_val = embedding_data_test(glove, list_of_sentences_with_tags_val)
     np.save(f"x_{file_name}_val", np.array(representation_val))
     np.save(f"y_{file_name}_val", np.array(labels_val))
 
@@ -206,7 +310,7 @@ def create_data(file_name):
 
 
 if __name__ == '__main__':
-    # representation, labels, representation_val, labels_val = create_data("only_known")
-    #model1(representation, labels, representation_val, labels_val)
-    model2("similar")
+    # representation, labels, representation_val, labels_val = create_data("featured")
+    # model1(representation, labels, representation_val, labels_val)
+    model2("featured")
     #model3("0_padded")

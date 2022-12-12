@@ -1,3 +1,4 @@
+import os.path
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -65,7 +66,30 @@ class FNN(nn.Module):
         return pred, loss
 
 
+class RNN(nn.Module):
+    def __init__(self, num_classes, input_dim, hidden_dim, num_layers, weights, drop_prob=0.5):
+        super(RNN, self).__init__()
+        self.num_classes = num_classes
+        self.num_layers = num_layers
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.rnn = nn.RNN(input_size=input_dim,
+                          hidden_size=hidden_dim,
+                          batch_first=True)
+        self.dropout = nn.Dropout(drop_prob)
+        self.fc = nn.Linear(hidden_dim, num_classes)
+        self.activation = nn.LeakyReLU()
+        self.loss = nn.CrossEntropyLoss(weight=Tensor(weights))
 
+    def forward(self, x, labels):
+        x = x.float()
+        x = self.dropout(x)
+        h0 = torch.zeros(1, self.hidden_dim)
+        out, _ = self.rnn(x, h0)
+        out = self.fc(out)
+        loss = self.loss(out, labels.long())
+        pred = out.argmax(dim=-1).clone().detach().cpu()
+        return pred, loss
 
 def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -119,7 +143,7 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
 
                 if epoch_F1_Score_valid > best_f1:
                     best_f1 = epoch_F1_Score_valid
-                    with open('model.pkl', 'wb') as f:
+                    with open(os.path.join('checkpoints', f'model_rnn_{best_f1}.pkl'), 'wb') as f:
                         torch.save(model, f)
         print()
 
@@ -149,9 +173,11 @@ def model2(data_name):
     #     for hidden_dim in hidden_dims:
     #         for batch_size in batch_sizes:
     hp = dict(num_epochs=140, hidden_dim=100, batch_size=200, lr=0.04)
-    fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'], weights=weights)
-    optimizer = Adam(params=fnn_model.parameters(), lr=hp['lr'])
-    bestf1 = train(model=fnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'],
+    # fnn_model = FNN(input_dim=train_ds.vector_dim, output_dim=num_classes, hidden_dim=hp['hidden_dim'], weights=weights)
+    rnn_model = RNN(num_classes=num_classes, input_dim=train_ds.vector_dim, hidden_dim=hp['hidden_dim'], num_layers=1,
+        weights=weights, drop_prob=0.1)
+    optimizer = Adam(params=rnn_model.parameters(), lr=hp['lr'])
+    bestf1 = train(model=rnn_model, data_sets=datasets, optimizer=optimizer, num_epochs=hp['num_epochs'],
                    batch_size=hp['batch_size'])
     # results[f"hidden_dim={hidden_dim}, batch_size={batch_size}, lr={learning_rate}"] =  bestf1
     # print(results)
