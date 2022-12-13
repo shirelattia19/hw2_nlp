@@ -1,14 +1,11 @@
 import os.path
 from statistics import mean
 
-import torch
-from gensim import downloader
 import numpy as np
 import re
 
 from gensim.models import KeyedVectors
 from tqdm import tqdm
-import difflib
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import metrics
 
@@ -305,6 +302,6 @@ def create_data(file_name):
 
 if __name__ == '__main__':
     # representation, labels, representation_val, labels_val = create_data("featured")
-    # model1("mean")
+    #model1("mean")
     model2("featured")
     # model3("0_padded")

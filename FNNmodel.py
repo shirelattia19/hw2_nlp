@@ -16,30 +16,28 @@ GLOVE_PATH = 'glove-twitter-200'
 
 
 class FNNDataSet(Dataset):
-
-    def __init__(self, x_file_path, y_file_path=None, is_path=True):
+    def __init__(self, x_file_path, y_file_path=None, is_untagged=False):
         self.x_file_path = x_file_path
         self.y_file_path = y_file_path
-        if is_path:
-            representation = np.load(self.x_file_path)
-        else:
+        self.is_untagged = is_untagged
+        if is_untagged:
             representation = x_file_path
-        if y_file_path:
-            labels = np.load(self.y_file_path)
+            labels = y_file_path
         else:
-            labels = None
+            representation = np.load(self.x_file_path)
+            labels = np.load(self.y_file_path)
         self.X = representation
         self.y = labels
         self.vector_dim = representation.shape[-1]
 
     def __getitem__(self, item):
-        if self.y:
-            return self.X[item], self.y[item]
-        else:
+        if self.is_untagged:
             return self.X[item]
+        else:
+            return self.X[item], self.y[item]
 
     def __len__(self):
-        return len(self.X.shape[0])
+        return self.X.shape[0]
 
 
 class FNN(nn.Module):
@@ -61,11 +59,11 @@ class FNN(nn.Module):
         # out = self.activation(out)
         out = self.fc3(out)
         out = self.activation(out)
-        if labels is None:
-            return out, None
         # y_hat = torch.transpose(out, 1, 2)  # .to(self.device)
-        loss = self.loss(out, labels.long())
         pred = out.argmax(dim=-1).clone().detach().cpu()
+        if labels is None:
+            return pred, None
+        loss = self.loss(out, labels.long())
         return pred, loss
 
 
